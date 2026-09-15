@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Block Math Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Cloud Save integration
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        
+        let app, auth, db;
+        
+        if (Object.keys(firebaseConfig).length > 0) {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            async function initAuth() {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined') {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                    window.userId = auth.currentUser.uid;
+                    await window.loadCloudData();
+                } catch (e) {
+                    console.error("Auth error", e);
+                }
+            }
+            initAuth();
+        }
+
+        window.loadCloudData = async function() {
+            if (!db || !window.userId) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', window.userId, 'mathStats', 'gameData');
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    if (window.updateCloudData) window.updateCloudData(docSnap.data());
+                }
+            } catch (e) {
+                console.error("Error loading data", e);
+            }
+        };
+
+        window.saveCloudData = async function(data) {
+            if (!db || !window.userId) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', window.userId, 'mathStats', 'gameData');
+                await setDoc(docRef, data, { merge: true });
+            } catch (e) {
+                console.error("Error saving data", e);
+            }
+        };
+    </script>
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #f0f9ff;
+            touch-action: manipulation;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        .lego-block {
+            position: relative;
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            box-shadow: 0 6px 0 rgba(0,0,0,0.2), inset 0 2px 0 rgba(255,255,255,0.4);
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s, opacity 0.3s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: 900;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            margin: 8px;
+        }
+
+        .lego-block:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 rgba(0,0,0,0.2), inset 0 2px 0 rgba(255,255,255,0.4);
+        }
+
+        .lego-block::before {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: 10px;
+            width: 15px;
+            height: 10px;
+            border-radius: 4px 4px 0 0;
+            background: inherit;
+            box-shadow: 25px 0 0 inherit;
+        }
+
+        .lego-red { background-color: #ef4444; }
+        .lego-blue { background-color: #3b82f6; }
+        .lego-green { background-color: #22c55e; }
+        .lego-yellow { background-color: #eab308; color: #854d0e; text-shadow: none;}
+
+        .smashed {
+            transform: scale(0) rotate(45deg);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .pop { animation: popAnim 0.3s ease-out; }
+        @keyframes popAnim {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        
+        .coin-bump { animation: coinBumpAnim 0.4s ease-out; color: #16a34a !important; }
+        @keyframes coinBumpAnim {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.4); }
+            100% { transform: scale(1); }
+        }
+
+        .shake { animation: shakeAnim 0.4s ease-in-out; }
+        @keyframes shakeAnim {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+
+        .lego-ten-stick {
+            position: relative;
+            width: 60px;
+            height: 200px;
+            border-radius: 8px;
+            box-shadow: 0 6px 0 rgba(0,0,0,0.2), inset 0 2px 0 rgba(255,255,255,0.4);
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s, opacity 0.3s;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-evenly;
+            align-items: center;
+            font-size: 24px;
+            font-weight: 900;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            margin: 8px;
+            background-image: repeating-linear-gradient(
+                to bottom,
+                transparent,
+                transparent 18px,
+                rgba(0,0,0,0.15) 19px,
+                rgba(0,0,0,0.15) 20px
+            );
+        }
+
+        .lego-ten-stick:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 rgba(0,0,0,0.2), inset 0 2px 0 rgba(255,255,255,0.4);
+        }
+        
+        .lego-ten-stick::before {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: 10px;
+            width: 15px;
+            height: 10px;
+            border-radius: 4px 4px 0 0;
+            background: inherit;
+            box-shadow: 25px 0 0 inherit;
+        }
+
+        .particle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            pointer-events: none;
+            animation: explode 0.5s ease-out forwards;
+        }
+
+        @keyframes explode {
+            0% { transform: translate(0, 0) scale(1); opacity: 1; }
+            100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+        }
+
+        .theme-space .lego-block, .theme-space .lego-ten-stick {
+            background-color: #1e1b4b !important;
+            box-shadow: 0 0 15px rgba(167, 139, 250, 0.6), inset 0 2px 0 rgba(255,255,255,0.2) !important;
+            border: 1px solid #8b5cf6;
+            color: #ddd6fe;
+        }
+        .theme-neon .lego-block, .theme-neon .lego-ten-stick {
+            background-color: #000 !important;
+            box-shadow: 0 0 10px var(--neon-color), inset 0 0 15px var(--neon-color) !important;
+            border: 2px solid var(--neon-color);
+            color: #fff;
+            text-shadow: 0 0 5px var(--neon-color);
+        }
+        .theme-neon.lego-red { --neon-color: #ff0055; }
+        .theme-neon.lego-blue { --neon-color: #00f3ff; }
+        .theme-neon.lego-green { --neon-color: #39ff14; }
+
+        #confetti {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 50;
+        }
+
+        .stat-bar-bg {
+            width: 100%;
+            background-color: #e5e7eb;
+            border-radius: 9999px;
+            height: 1.5rem;
+            overflow: hidden;
+        }
+        .stat-bar-fill {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 0.5rem;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: bold;
+            transition: width 1s ease-out;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col">
+
+    <canvas id="confetti"></canvas>
+
+    <header class="bg-white p-4 shadow-md flex flex-col md:flex-row justify-between items-center z-10 space-y-2 md:space-y-0">
+        <div class="flex items-center space-x-2">
+            <div class="bg-yellow-400 p-2 rounded-full shadow cursor-pointer transition-transform hover:scale-105" id="btn-parents" title="Parent Dashboard">
+                <svg class="w-6 h-6 text-yellow-800" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+            </div>
+            <span id="streak-container" class="text-2xl font-bold text-gray-700">Streak: <span id="streak-counter" class="text-green-500">0</span></span>
+            
+            <div id="timer-container" class="hidden text-2xl font-bold text-gray-700 bg-red-100 px-3 py-1 rounded-lg border-2 border-red-300">
+                ⏱️ <span id="sprint-timer" class="text-red-600">0.0s</span>
+            </div>
+            
+            <div class="ml-4 bg-yellow-100 p-2 rounded-full shadow-inner flex items-center border border-yellow-300">
+                <span class="text-xl mr-1">🪙</span>
+                <span id="coin-counter" class="text-xl font-bold text-yellow-700 transition-colors duration-300">0</span>
+            </div>
+        </div>
+        
+        <div class="flex items-center space-x-2 md:space-x-4">
+            <button id="btn-shop" class="p-2 rounded-full bg-purple-500 text-white font-bold shadow transition-colors text-sm hover:bg-purple-600 flex items-center">
+                🛍️ Shop
+            </button>
+            <div class="flex bg-gray-200 rounded-full p-1">
+                <button id="btn-add" class="px-3 md:px-5 py-2 rounded-full bg-blue-500 text-white font-bold shadow transition-colors text-sm md:text-lg">Add (+)</button>
+                <button id="btn-sub" class="px-3 md:px-5 py-2 rounded-full text-gray-600 font-bold transition-colors text-sm md:text-lg hover:bg-gray-300">Sub (-)</button>
+                <button id="btn-mix" class="px-3 md:px-5 py-2 rounded-full text-gray-600 font-bold transition-colors text-sm md:text-lg hover:bg-gray-300">Mix (?)</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="w-full bg-white border-b flex flex-col items-center p-2 z-10 shadow-sm space-y-2">
+        <div class="flex justify-center space-x-2 w-full overflow-x-auto pb-1 items-center">
+            <button id="btn-lvl-1" class="px-4 py-1 rounded-full bg-yellow-400 text-yellow-900 font-bold text-sm shadow-sm transition-colors border-2 border-yellow-500 whitespace-nowrap">Level 1 (Singles)</button>
+            <button id="btn-lvl-2" class="px-4 py-1 rounded-full bg-gray-100 text-gray-500 font-bold text-sm transition-colors border-2 border-transparent whitespace-nowrap">Level 2 (Tens & Ones)</button>
+            <button id="btn-lvl-3" class="px-4 py-1 rounded-full bg-gray-100 text-gray-500 font-bold text-sm transition-colors border-2 border-transparent whitespace-nowrap">Level 3 (Big Numbers)</button>
+            
+            <button id="btn-auto-level" class="ml-2 px-3 py-1 rounded-full bg-purple-100 text-purple-700 font-bold text-sm shadow-sm transition-colors border-2 border-purple-300 whitespace-nowrap flex items-center">
+                ✨ Auto-Level: <span id="auto-level-status" class="ml-1 text-gray-500">OFF</span>
+            </button>
+        </div>
+        <div class="flex justify-center space-x-2 w-full">
+            <button id="btn-mode-practice" class="px-4 py-1 rounded-md bg-green-500 text-white font-bold text-sm shadow-sm transition-colors">Practice Mode</button>
+            <button id="btn-mode-sprint" class="px-4 py-1 rounded-md bg-gray-200 text-gray-600 font-bold text-sm transition-colors hover:bg-gray-300">Sprint (10 Qs) 🏃‍♂️</button>
+            <div id="best-time-display" class="hidden items-center ml-2 text-sm font-bold text-purple-600 bg-purple-100 px-2 rounded border border-purple-200">
+                🏆 Best: <span id="best-time-val">--</span>s
+            </div>
+        </div>
+    </div>
+
+    <main class="flex-1 flex flex-col items-center justify-start p-4 relative">
+        <div id="message-box" class="bg-white border-4 border-blue-400 rounded-2xl p-4 mt-4 shadow-lg max-w-2xl text-center w-full transform transition-all relative">
+            <button id="btn-speak" class="absolute top-2 right-2 p-2 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors" title="Read Aloud">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd"></path></svg>
+            </button>
+            <h2 id="instruction-text" class="text-2xl md:text-3xl font-bold text-gray-800 pr-8">Let's build!</h2>
+            <p id="sub-instruction" class="text-lg text-gray-500 mt-2 font-semibold pr-8">Loading blocks...</p>
+        </div>
+
+        <div class="mt-8 text-5xl md:text-7xl font-black text-gray-700 flex items-center space-x-4">
+            <span id="eq-num1">?</span>
+            <span id="eq-op" class="text-blue-500">+</span>
+            <span id="eq-num2">?</span>
+            <span class="text-gray-400">=</span>
+            <span id="eq-answer" class="text-gray-300 border-b-4 border-dashed border-gray-300 pb-2 min-w-[60px] text-center">?</span>
+        </div>
+
+        <div id="block-arena" class="mt-8 flex-1 w-full max-w-3xl flex justify-center items-center flex-wrap content-start">
+            <!-- Blocks injected here -->
+        </div>
+
+        <!-- Options are now immediately visible -->
+        <div id="answer-options" class="mb-8 pb-12 mt-4 w-full max-w-2xl grid grid-cols-3 gap-4">
+            <!-- Buttons injected here -->
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <div id="hint-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden justify-center items-center z-50">
+        <div class="bg-white rounded-3xl p-8 max-w-sm text-center shadow-2xl">
+            <div class="text-6xl mb-4">🤔</div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">Not quite!</h3>
+            <p id="hint-text" class="text-lg text-gray-600 mb-6">Let's try counting the blocks one by one.</p>
+            <button id="close-hint" class="bg-blue-500 text-white font-bold text-xl py-3 px-8 rounded-full shadow-lg active:translate-y-1">Try Again</button>
+        </div>
+    </div>
+
+    <div id="shop-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden justify-center items-center z-50">
+        <div class="bg-white rounded-3xl p-8 max-w-md text-center shadow-2xl w-full mx-4">
+            <h2 class="text-3xl font-black text-purple-600 mb-2">Block Shop</h2>
+            <p class="text-gray-500 mb-6">Spend your coins on cool new blocks!</p>
+            <div class="grid grid-cols-1 gap-4 mb-6">
+                <div class="border-2 border-gray-200 rounded-xl p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50" onclick="selectTheme('classic')">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 bg-blue-500 rounded flex items-center justify-center text-white font-bold text-xs shadow-inner">1</div>
+                        <span class="font-bold text-lg text-gray-700">Classic Blocks</span>
+                    </div>
+                    <span class="text-green-500 font-bold">Owned ✓</span>
+                </div>
+                <div class="border-2 border-gray-200 rounded-xl p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50" onclick="buyTheme('space', 50)">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 bg-indigo-900 border border-purple-400 rounded flex items-center justify-center text-purple-200 font-bold text-xs shadow-lg">1</div>
+                        <span class="font-bold text-lg text-gray-700">Deep Space</span>
+                    </div>
+                    <button id="btn-buy-space" class="bg-yellow-400 text-yellow-900 font-bold px-3 py-1 rounded-full shadow-sm">50 🪙</button>
+                </div>
+                <div class="border-2 border-gray-200 rounded-xl p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50" onclick="buyTheme('neon', 100)">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 bg-black border-2 border-pink-500 rounded flex items-center justify-center text-white font-bold text-xs shadow-lg" style="box-shadow: 0 0 10px #ff0055 inset">1</div>
+                        <span class="font-bold text-lg text-gray-700">Cyber Neon</span>
+                    </div>
+                    <button id="btn-buy-neon" class="bg-yellow-400 text-yellow-900 font-bold px-3 py-1 rounded-full shadow-sm">100 🪙</button>
+                </div>
+            </div>
+            <button id="close-shop" class="bg-gray-200 text-gray-700 font-bold text-lg py-2 px-8 rounded-full shadow active:translate-y-1">Close Shop</button>
+        </div>
+    </div>
+
+    <div id="sprint-modal" class="fixed inset-0 bg-black bg-opacity-70 hidden justify-center items-center z-50">
+        <div class="bg-white rounded-3xl p-8 max-w-sm text-center shadow-2xl transform transition-transform w-full mx-4">
+            <div class="text-6xl mb-4">🏁</div>
+            <h2 class="text-3xl font-black text-blue-600 mb-2">Sprint Finish!</h2>
+            <p class="text-gray-500 mb-4 font-semibold">You answered 10 questions in:</p>
+            <div class="text-5xl font-black text-red-500 mb-2" id="sprint-final-time">0.0s</div>
+            <p id="sprint-best-message" class="text-green-500 font-bold text-lg mb-6 h-6"></p>
+            <button id="btn-sprint-again" class="bg-blue-500 hover:bg-blue-600 text-white font-bold text-xl py-3 px-8 rounded-full shadow-lg active:translate-y-1 w-full mb-3">Play Again</button>
+            <button id="btn-sprint-practice" class="bg-gray-200 text-gray-700 font-bold text-lg py-2 px-8 rounded-full shadow active:translate-y-1 w-full">Back to Practice</button>
+        </div>
+    </div>
+
+    <!-- Parent Gate Modal -->
+    <div id="gate-modal" class="fixed inset-0 bg-slate-900 bg-opacity-90 hidden justify-center items-center z-50">
+        <div class="bg-white rounded-3xl p-8 max-w-sm text-center shadow-2xl w-full mx-4">
+            <h2 class="text-2xl font-black text-slate-800 mb-2">Parents Only</h2>
+            <p class="text-gray-500 mb-6">To access the dashboard, please solve this multiplication problem.</p>
+            <div class="text-3xl font-bold text-blue-600 mb-4" id="gate-question">8 x 7 = ?</div>
+            <input type="number" id="gate-answer" class="w-full text-center text-3xl font-bold border-4 border-gray-200 rounded-xl py-2 focus:border-blue-500 focus:outline-none mb-4" placeholder="Answer">
+            <div class="flex space-x-2">
+                <button id="btn-gate-cancel" class="flex-1 bg-gray-200 text-gray-700 font-bold py-3 rounded-xl">Cancel</button>
+                <button id="btn-gate-submit" class="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl">Unlock</button>
+            </div>
+            <p id="gate-error" class="text-red-500 font-bold mt-2 hidden">Incorrect, try again.</p>
+        </div>
+    </div>
+
+    <!-- Parent Dashboard Modal -->
+    <div id="dashboard-modal" class="fixed inset-0 bg-slate-900 bg-opacity-95 hidden justify-center items-center z-50 overflow-y-auto">
+        <div class="bg-white rounded-3xl p-6 md:p-10 max-w-2xl w-full mx-4 my-8 shadow-2xl relative">
+            <button id="close-dashboard" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+            
+            <h2 class="text-3xl font-black text-slate-800 mb-6 flex items-center">
+                <svg class="w-8 h-8 text-blue-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                Learning Dashboard
+            </h2>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 text-center">
+                    <div class="text-sm text-blue-600 font-bold uppercase">Playtime</div>
+                    <div class="text-3xl font-black text-blue-900" id="dash-time">0m</div>
+                </div>
+                <div class="bg-green-50 p-4 rounded-2xl border border-green-100 text-center">
+                    <div class="text-sm text-green-600 font-bold uppercase">Solved</div>
+                    <div class="text-3xl font-black text-green-900" id="dash-solved">0</div>
+                </div>
+                <div class="bg-purple-50 p-4 rounded-2xl border border-purple-100 text-center">
+                    <div class="text-sm text-purple-600 font-bold uppercase">Overall Acc.</div>
+                    <div class="text-3xl font-black text-purple-900" id="dash-acc">0%</div>
+                </div>
+                <div class="bg-yellow-50 p-4 rounded-2xl border border-yellow-100 text-center">
+                    <div class="text-sm text-yellow-600 font-bold uppercase">Struggles</div>
+                    <div class="text-3xl font-black text-yellow-900" id="dash-struggles">0</div>
+                </div>
+            </div>
+
+            <h3 class="text-xl font-bold text-slate-700 mb-4">Skill Heatmap</h3>
+            <div class="space-y-6 mb-8 bg-gray-50 p-6 rounded-2xl border border-gray-200">
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <span class="font-bold text-gray-700">Addition Mastery</span>
+                        <span class="font-bold text-blue-600" id="dash-add-percent">0%</span>
+                    </div>
+                    <div class="stat-bar-bg">
+                        <div class="stat-bar-fill bg-blue-500" id="dash-add-bar" style="width: 0%"></div>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1" id="dash-add-details">0 correct / 0 total</div>
+                </div>
+                
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <span class="font-bold text-gray-700">Subtraction Mastery</span>
+                        <span class="font-bold text-red-600" id="dash-sub-percent">0%</span>
+                    </div>
+                    <div class="stat-bar-bg">
+                        <div class="stat-bar-fill bg-red-500" id="dash-sub-bar" style="width: 0%"></div>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1" id="dash-sub-details">0 correct / 0 total</div>
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button id="btn-reset-stats" class="text-red-500 hover:text-red-700 font-bold text-sm underline">Reset All Statistics</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Data Tracking State
+        let stats = {
+            playTimeSec: 0,
+            addCorrect: 0,
+            addIncorrect: 0,
+            subCorrect: 0,
+            subIncorrect: 0,
+            bestTimes: {1: null, 2: null, 3: null},
+            coins: 0,
+            unlockedThemes: ['classic'],
+            currentTheme: 'classic'
+        };
+
+        // Load local stats immediately
+        try {
+            const localData = localStorage.getItem('blockMathStats');
+            if (localData) {
+                const parsed = JSON.parse(localData);
+                stats = { ...stats, ...parsed };
+            }
+        } catch(e) {}
+
+        // Cloud sync callback
+        window.updateCloudData = function(data) {
+            stats = { ...stats, ...data };
+            updateBestTimeUI();
+            updateShopUI();
+            saveLocalStats();
+        };
+
+        function saveLocalStats() {
+            localStorage.setItem('blockMathStats', JSON.stringify(stats));
+            if (window.saveCloudData) window.saveCloudData(stats);
+        }
+
+        // Track Playtime silently in background
+        setInterval(() => {
+            stats.playTimeSec += 5;
+            saveLocalStats();
+        }, 5000);
+
+        // Game State
+        let state = {
+            playMode: 'practice', 
+            selectedOp: 'add', // User selected mode (add, sub, mix)
+            mode: 'add', // Current active operation
+            level: 1,    
+            autoLevel: false, 
+            struggleCount: 0, 
+            num1: 0, num2: 0, correctAnswer: 0,
+            streak: 0,
+            blocksToSmash: 0, smashedCount: 0, countedCount: 0, itemsToCount: 0, itemsCounted: 0, 
+            phase: 'answer', 
+            sprintCount: 0, maxSprint: 10, startTime: 0, timerInterval: null,
+            prevNum1: 0, prevNum2: 0,
+            gateAnswer: 0
+        };
+
+        // DOM Elements
+        const elInstruction = document.getElementById('instruction-text');
+        const elSubInstruction = document.getElementById('sub-instruction');
+        const elArena = document.getElementById('block-arena');
+        const elOptions = document.getElementById('answer-options');
+        const elNum1 = document.getElementById('eq-num1');
+        const elNum2 = document.getElementById('eq-num2');
+        const elOp = document.getElementById('eq-op');
+        const elAnswer = document.getElementById('eq-answer');
+        const elStreakContainer = document.getElementById('streak-container');
+        const elStreak = document.getElementById('streak-counter');
+        const elTimerContainer = document.getElementById('timer-container');
+        const elSprintTimer = document.getElementById('sprint-timer');
+        const elCoins = document.getElementById('coin-counter'); 
+        
+        const btnAdd = document.getElementById('btn-add');
+        const btnSub = document.getElementById('btn-sub');
+        const btnMix = document.getElementById('btn-mix');
+        const btnSpeak = document.getElementById('btn-speak');
+        const btnShop = document.getElementById('btn-shop'); 
+        const btnParents = document.getElementById('btn-parents');
+        
+        const hintModal = document.getElementById('hint-modal');
+        const shopModal = document.getElementById('shop-modal'); 
+        const gateModal = document.getElementById('gate-modal');
+        const dashboardModal = document.getElementById('dashboard-modal');
+        
+        const closeHintBtn = document.getElementById('close-hint');
+        const closeShopBtn = document.getElementById('close-shop'); 
+        const closeDashboardBtn = document.getElementById('close-dashboard');
+        const messageBox = document.getElementById('message-box');
+        
+        const btnLvl1 = document.getElementById('btn-lvl-1');
+        const btnLvl2 = document.getElementById('btn-lvl-2');
+        const btnLvl3 = document.getElementById('btn-lvl-3');
+        const btnAutoLevel = document.getElementById('btn-auto-level');
+        const autoLevelStatus = document.getElementById('auto-level-status');
+        const btnModePractice = document.getElementById('btn-mode-practice');
+        const btnModeSprint = document.getElementById('btn-mode-sprint');
+        const elBestTimeDisplay = document.getElementById('best-time-display');
+        const elBestTimeVal = document.getElementById('best-time-val');
+        
+        const sprintModal = document.getElementById('sprint-modal');
+        const btnSprintAgain = document.getElementById('btn-sprint-again');
+        const btnSprintPractice = document.getElementById('btn-sprint-practice');
+
+        btnAdd.addEventListener('click', () => setOpMode('add'));
+        btnSub.addEventListener('click', () => setOpMode('sub'));
+        btnMix.addEventListener('click', () => setOpMode('mix'));
+        
+        btnSpeak.addEventListener('click', () => {
+            const opWord = state.mode === 'add' ? 'plus' : 'minus';
+            const textToSpeak = `${elInstruction.innerText} What is ${state.num1} ${opWord} ${state.num2}?`;
+            speakText(textToSpeak);
+        });
+
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                // Cancel any ongoing speech
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                // Slight adjustments for a friendlier voice
+                utterance.pitch = 1.1;
+                utterance.rate = 0.9; 
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        closeHintBtn.addEventListener('click', () => hintModal.classList.replace('flex', 'hidden'));
+        
+        btnShop.addEventListener('click', () => {
+            updateShopUI();
+            shopModal.classList.replace('hidden', 'flex');
+        });
+        closeShopBtn.addEventListener('click', () => shopModal.classList.replace('flex', 'hidden'));
+
+        btnLvl1.addEventListener('click', () => setLevel(1));
+        btnLvl2.addEventListener('click', () => setLevel(2));
+        btnLvl3.addEventListener('click', () => setLevel(3));
+
+        btnAutoLevel.addEventListener('click', () => {
+            state.autoLevel = !state.autoLevel;
+            playSound('blip');
+            if (state.autoLevel) {
+                btnAutoLevel.classList.replace('bg-purple-100', 'bg-purple-500');
+                btnAutoLevel.classList.replace('text-purple-700', 'text-white');
+                autoLevelStatus.innerText = 'ON';
+                autoLevelStatus.classList.replace('text-gray-500', 'text-green-300');
+            } else {
+                btnAutoLevel.classList.replace('bg-purple-500', 'bg-purple-100');
+                btnAutoLevel.classList.replace('text-white', 'text-purple-700');
+                autoLevelStatus.innerText = 'OFF';
+                autoLevelStatus.classList.replace('text-green-300', 'text-gray-500');
+            }
+        });
+
+        btnModePractice.addEventListener('click', () => setPlayMode('practice'));
+        btnModeSprint.addEventListener('click', () => setPlayMode('sprint'));
+        
+        btnSprintAgain.addEventListener('click', () => {
+            sprintModal.classList.replace('flex', 'hidden');
+            startSprint();
+        });
+        btnSprintPractice.addEventListener('click', () => {
+            sprintModal.classList.replace('flex', 'hidden');
+            setPlayMode('practice');
+        });
+
+        btnParents.addEventListener('click', openParentGate);
+        document.getElementById('btn-gate-cancel').addEventListener('click', () => gateModal.classList.replace('flex', 'hidden'));
+        document.getElementById('btn-gate-submit').addEventListener('click', checkParentGate);
+        closeDashboardBtn.addEventListener('click', () => dashboardModal.classList.replace('flex', 'hidden'));
+        
+        document.getElementById('btn-reset-stats').addEventListener('click', () => {
+            if(confirm("Are you sure you want to delete all learning data? This cannot be undone.")) {
+                stats = {
+                    playTimeSec: 0, addCorrect: 0, addIncorrect: 0, subCorrect: 0, subIncorrect: 0,
+                    bestTimes: {1: null, 2: null, 3: null},
+                    coins: stats.coins, unlockedThemes: stats.unlockedThemes, currentTheme: stats.currentTheme
+                };
+                saveLocalStats();
+                updateDashboardUI();
+            }
+        });
+
+        function openParentGate() {
+            let g1 = Math.floor(Math.random() * 5) + 5; 
+            let g2 = Math.floor(Math.random() * 5) + 5; 
+            state.gateAnswer = g1 * g2;
+            
+            document.getElementById('gate-question').innerText = `${g1} x ${g2} = ?`;
+            document.getElementById('gate-answer').value = '';
+            document.getElementById('gate-error').classList.add('hidden');
+            
+            gateModal.classList.replace('hidden', 'flex');
+            document.getElementById('gate-answer').focus();
+        }
+
+        function checkParentGate() {
+            const input = parseInt(document.getElementById('gate-answer').value);
+            if (input === state.gateAnswer) {
+                gateModal.classList.replace('flex', 'hidden');
+                updateDashboardUI();
+                dashboardModal.classList.replace('hidden', 'flex');
+            } else {
+                document.getElementById('gate-error').classList.remove('hidden');
+                document.getElementById('gate-answer').value = '';
+            }
+        }
+
+        function updateDashboardUI() {
+            const totalAdd = stats.addCorrect + stats.addIncorrect;
+            const totalSub = stats.subCorrect + stats.subIncorrect;
+            const totalCorrect = stats.addCorrect + stats.subCorrect;
+            const totalQuestions = totalAdd + totalSub;
+            const totalStruggles = stats.addIncorrect + stats.subIncorrect;
+            
+            const overallAcc = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+            const addAcc = totalAdd > 0 ? Math.round((stats.addCorrect / totalAdd) * 100) : 0;
+            const subAcc = totalSub > 0 ? Math.round((stats.subCorrect / totalSub) * 100) : 0;
+            
+            const minutes = Math.floor(stats.playTimeSec / 60);
+
+            document.getElementById('dash-time').innerText = `${minutes}m`;
+            document.getElementById('dash-solved').innerText = totalCorrect;
+            document.getElementById('dash-acc').innerText = `${overallAcc}%`;
+            document.getElementById('dash-struggles').innerText = totalStruggles;
+
+            document.getElementById('dash-add-percent').innerText = `${addAcc}%`;
+            document.getElementById('dash-add-bar').style.width = `${addAcc}%`;
+            document.getElementById('dash-add-details').innerText = `${stats.addCorrect} correct / ${totalAdd} total`;
+
+            document.getElementById('dash-sub-percent').innerText = `${subAcc}%`;
+            document.getElementById('dash-sub-bar').style.width = `${subAcc}%`;
+            document.getElementById('dash-sub-details').innerText = `${stats.subCorrect} correct / ${totalSub} total`;
+        }
+
+        function updateBestTimeUI() {
+            if (state.playMode === 'sprint' && stats.bestTimes[state.level]) {
+                elBestTimeVal.innerText = stats.bestTimes[state.level].toFixed(1);
+            } else {
+                elBestTimeVal.innerText = '--';
+            }
+            elCoins.innerText = stats.coins;
+        }
+        
+        function updateShopUI() {
+            elCoins.innerText = stats.coins;
+            ['space', 'neon'].forEach(theme => {
+                const btn = document.getElementById(`btn-buy-${theme}`);
+                if (stats.unlockedThemes.includes(theme)) {
+                    btn.innerText = "Owned ✓";
+                    btn.className = "text-green-500 font-bold px-3 py-1 rounded-full shadow-sm";
+                }
+            });
+        }
+
+        function setPlayMode(mode) {
+            state.playMode = mode;
+            playSound('blip');
+            
+            if (mode === 'practice') {
+                btnModePractice.className = "px-4 py-1 rounded-md bg-green-500 text-white font-bold text-sm shadow-sm transition-colors";
+                btnModeSprint.className = "px-4 py-1 rounded-md bg-gray-200 text-gray-600 font-bold text-sm transition-colors hover:bg-gray-300";
+                
+                elStreakContainer.classList.remove('hidden');
+                elTimerContainer.classList.add('hidden');
+                elBestTimeDisplay.classList.add('hidden');
+                
+                if (state.timerInterval) clearInterval(state.timerInterval);
+                generateProblem();
+            } else {
+                btnModeSprint.className = "px-4 py-1 rounded-md bg-blue-500 text-white font-bold text-sm shadow-sm transition-colors";
+                btnModePractice.className = "px-4 py-1 rounded-md bg-gray-200 text-gray-600 font-bold text-sm transition-colors hover:bg-gray-300";
+                
+                elStreakContainer.classList.add('hidden');
+                elTimerContainer.classList.remove('hidden');
+                elBestTimeDisplay.classList.replace('hidden', 'flex');
+                
+                updateBestTimeUI();
+                startSprint();
+            }
+        }
+
+        function startSprint() {
+            state.sprintCount = 0;
+            state.startTime = Date.now();
+            elSprintTimer.innerText = "0.0s";
+            
+            if (state.timerInterval) clearInterval(state.timerInterval);
+            state.timerInterval = setInterval(() => {
+                let elapsed = (Date.now() - state.startTime) / 1000;
+                elSprintTimer.innerText = elapsed.toFixed(1) + "s";
+            }, 100);
+            
+            generateProblem();
+        }
+
+        function updateLevelButtons() {
+            [btnLvl1, btnLvl2, btnLvl3].forEach(btn => {
+                btn.className = "px-4 py-1 rounded-full bg-gray-100 text-gray-500 font-bold text-sm transition-colors border-2 border-transparent whitespace-nowrap";
+            });
+            const activeBtn = state.level === 1 ? btnLvl1 : state.level === 2 ? btnLvl2 : btnLvl3;
+            activeBtn.className = "px-4 py-1 rounded-full bg-yellow-400 text-yellow-900 font-bold text-sm shadow-sm transition-colors border-2 border-yellow-500 whitespace-nowrap";
+        }
+
+        function setLevel(lvl) {
+            state.level = lvl;
+            playSound('blip');
+            updateLevelButtons();
+            state.streak = 0;
+            state.struggleCount = 0;
+            elStreak.innerText = state.streak;
+            updateBestTimeUI();
+            
+            if (state.playMode === 'sprint') startSprint();
+            else generateProblem();
+        }
+
+        function setOpMode(op) {
+            state.selectedOp = op;
+            playSound('blip');
+            
+            // Reset all buttons
+            btnAdd.className = "px-3 md:px-5 py-2 rounded-full text-gray-600 font-bold transition-colors text-sm md:text-lg hover:bg-gray-300";
+            btnSub.className = "px-3 md:px-5 py-2 rounded-full text-gray-600 font-bold transition-colors text-sm md:text-lg hover:bg-gray-300";
+            btnMix.className = "px-3 md:px-5 py-2 rounded-full text-gray-600 font-bold transition-colors text-sm md:text-lg hover:bg-gray-300";
+            
+            // Activate selected
+            if (op === 'add') {
+                btnAdd.className = "px-3 md:px-5 py-2 rounded-full bg-blue-500 text-white font-bold shadow transition-colors text-sm md:text-lg";
+            } else if (op === 'sub') {
+                btnSub.className = "px-3 md:px-5 py-2 rounded-full bg-red-500 text-white font-bold shadow transition-colors text-sm md:text-lg";
+            } else {
+                btnMix.className = "px-3 md:px-5 py-2 rounded-full bg-purple-500 text-white font-bold shadow transition-colors text-sm md:text-lg";
+            }
+            
+            if (state.playMode === 'practice') {
+                generateProblem();
+            } else {
+                startSprint();
+            }
+        }
+
+        function generateProblem() {
+            let prevNum1 = state.num1;
+            let prevNum2 = state.num2;
+            let newNum1 = 0;
+            let newNum2 = 0;
+            
+            // Handle Mix Mode
+            if (state.selectedOp === 'mix') {
+                state.mode = Math.random() > 0.5 ? 'add' : 'sub';
+            } else {
+                state.mode = state.selectedOp;
+            }
+
+            // Guarantee new random combinations every time
+            do {
+                if (state.mode === 'add') {
+                    if (state.level === 1) {
+                        newNum1 = Math.floor(Math.random() * 9) + 1; 
+                        newNum2 = Math.floor(Math.random() * 9) + 1; 
+                    } else if (state.level === 2) {
+                        let tens = (Math.floor(Math.random() * 9) + 1) * 10;
+                        let ones = Math.floor(Math.random() * 9) + 1;
+                        if (Math.random() > 0.5) { newNum1 = tens; newNum2 = ones; } 
+                        else { newNum1 = ones; newNum2 = tens; }
+                    } else {
+                        newNum1 = Math.floor(Math.random() * 39) + 11;
+                        newNum2 = Math.floor(Math.random() * 39) + 11;
+                    }
+                } else {
+                    if (state.level === 1) {
+                        newNum1 = Math.floor(Math.random() * 8) + 2; 
+                        newNum2 = Math.floor(Math.random() * (newNum1 - 1)) + 1; 
+                    } else if (state.level === 2) {
+                        if (Math.random() > 0.5) {
+                            let t = Math.floor(Math.random() * 8) + 1;
+                            let o = Math.floor(Math.random() * 8) + 2;
+                            newNum1 = t * 10 + o;
+                            newNum2 = Math.floor(Math.random() * (o - 1)) + 1; 
+                        } else {
+                            let t = Math.floor(Math.random() * 8) + 2;
+                            let o = Math.floor(Math.random() * 9) + 1;
+                            newNum1 = t * 10 + o;
+                            newNum2 = (Math.floor(Math.random() * (t - 1)) + 1) * 10;
+                        }
+                    } else {
+                        // Level 3 Smart Subtraction (No regrouping needed)
+                        let t1 = Math.floor(Math.random() * 8) + 2;
+                        let o1 = Math.floor(Math.random() * 8) + 2;
+                        newNum1 = t1 * 10 + o1;
+                        
+                        let t2 = Math.floor(Math.random() * (t1 - 1)) + 1;
+                        let o2 = Math.floor(Math.random() * (o1 - 1)) + 1;
+                        newNum2 = t2 * 10 + o2;
+                    }
+                }
+            } while (newNum1 === prevNum1 && newNum2 === prevNum2);
+
+            state.num1 = newNum1;
+            state.num2 = newNum2;
+
+            if (state.mode === 'add') {
+                state.correctAnswer = state.num1 + state.num2;
+                elOp.innerText = '+';
+                elOp.className = 'text-blue-500';
+            } else {
+                state.correctAnswer = state.num1 - state.num2;
+                elOp.innerText = '-';
+                elOp.className = 'text-red-500';
+            }
+
+            state.smashedCount = 0; 
+            state.countedCount = 0; 
+            state.itemsCounted = 0; 
+            
+            elArena.className = `mt-8 flex-1 w-full max-w-3xl flex justify-center items-center flex-wrap content-start theme-${stats.currentTheme}`;
+
+            if (state.mode === 'add') {
+                let n1Tens = Math.floor(state.num1 / 10);
+                let n1Ones = state.num1 % 10;
+                let n2Tens = Math.floor(state.num2 / 10);
+                let n2Ones = state.num2 % 10;
+                state.itemsToCount = n1Tens + n1Ones + n2Tens + n2Ones;
+                state.blocksToSmash = 0;
+            } else {
+                state.itemsToCount = 0;
+                state.blocksToSmash = state.num2; 
+            }
+
+            state.phase = 'answer'; 
+            
+            // RE-BUILD INSTRUCTIONS (Fixing the overwrite bug)
+            const instructionHTML = `
+                <button id="btn-speak" class="absolute top-2 right-2 p-2 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors" title="Read Aloud">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd"></path></svg>
+                </button>
+                <h2 id="instruction-text" class="text-2xl md:text-3xl font-bold text-gray-800 pr-8">Let's build!</h2>
+                <p id="sub-instruction" class="text-lg text-gray-500 mt-2 font-semibold pr-8">Loading blocks...</p>
+            `;
+            messageBox.innerHTML = instructionHTML;
+            
+            // Re-attach listener to dynamic button
+            document.getElementById('btn-speak').addEventListener('click', () => {
+                const opWord = state.mode === 'add' ? 'plus' : 'minus';
+                const textToSpeak = `${document.getElementById('instruction-text').innerText} What is ${state.num1} ${opWord} ${state.num2}?`;
+                speakText(textToSpeak);
+            });
+            
+            updateUI();
+            renderBlocks();
+            generateAnswerOptions();
+        }
+
+        function updateUI() {
+            elNum1.innerText = state.num1;
+            elNum2.innerText = state.num2;
+            elAnswer.innerText = '?';
+            elAnswer.className = "text-gray-300 border-b-4 border-dashed border-gray-300 pb-2 min-w-[60px] text-center";
+            
+            elOptions.classList.remove('opacity-0', 'pointer-events-none');
+            
+            const instText = document.getElementById('instruction-text');
+            const subInstText = document.getElementById('sub-instruction');
+
+            if (state.mode === 'add') {
+                instText.innerHTML = `Let's add <span class="text-red-500">${state.num1}</span> and <span class="text-blue-500">${state.num2}</span>!`;
+                if (state.playMode === 'sprint') subInstText.innerText = `Question ${state.sprintCount + 1} of ${state.maxSprint} - Go fast!`;
+                else subInstText.innerText = "Count the blocks, or pick the answer if you know it!";
+                messageBox.className = "bg-white border-4 border-blue-400 rounded-2xl p-4 mt-4 shadow-lg max-w-2xl text-center w-full transform transition-all relative";
+            } else {
+                instText.innerHTML = `<span class="text-green-500">${state.num1}</span> minus <span class="text-red-500">${state.num2}</span>!`;
+                if (state.playMode === 'sprint') subInstText.innerText = `Question ${state.sprintCount + 1} of ${state.maxSprint} - Go fast!`;
+                else subInstText.innerText = "Smash the blocks, or pick the answer if you know it!";
+                messageBox.className = "bg-white border-4 border-red-400 rounded-2xl p-4 mt-4 shadow-lg max-w-2xl text-center w-full transform transition-all relative";
+            }
+        }
+
+        function renderBlocks() {
+            elArena.innerHTML = '';
+            
+            if (state.mode === 'add') {
+                const group1 = document.createElement('div');
+                group1.className = "flex flex-wrap justify-center m-4 bg-red-50 p-4 rounded-xl border-2 border-red-100 max-w-sm";
+                buildNumberBlocks(state.num1, 'lego-red', 'add', group1);
+                
+                const group2 = document.createElement('div');
+                group2.className = "flex flex-wrap justify-center m-4 bg-blue-50 p-4 rounded-xl border-2 border-blue-100 max-w-sm";
+                buildNumberBlocks(state.num2, 'lego-blue', 'add', group2);
+                
+                elArena.appendChild(group1);
+                elArena.appendChild(group2);
+            } else {
+                const group = document.createElement('div');
+                group.className = "flex flex-wrap justify-center m-4 p-4 max-w-xl bg-green-50 rounded-xl border-2 border-green-100";
+                
+                let t = Math.floor(state.num2 / 10);
+                let o = state.num2 % 10;
+                state.domItemsToSmash = t + o; 
+                state.domItemsSmashed = 0;
+
+                buildNumberBlocks(state.num1, 'lego-green', 'sub', group);
+                elArena.appendChild(group);
+            }
+        }
+
+        function buildNumberBlocks(number, colorClass, type, container) {
+            let tens = Math.floor(number / 10);
+            let ones = number % 10;
+            for(let i=0; i<tens; i++) container.appendChild(createBlock(colorClass, type, 10));
+            for(let i=0; i<ones; i++) container.appendChild(createBlock(colorClass, type, 1));
+        }
+
+        function createBlock(colorClass, type, value) {
+            const block = document.createElement('div');
+            let shapeClass = value === 10 ? 'lego-ten-stick' : 'lego-block';
+            block.className = `${shapeClass} ${colorClass}`;
+            
+            block.addEventListener('click', function(e) {
+                if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+
+                if (type === 'add') {
+                    if (!this.classList.contains('counted')) {
+                        playSound('pop');
+                        state.countedCount += value;
+                        state.itemsCounted++;
+                        
+                        this.innerText = state.countedCount;
+                        this.classList.add('counted', 'pop');
+                        this.style.opacity = '0.9';
+                        if (value === 10) this.style.backgroundColor = '#475569';
+                        
+                        if (state.itemsCounted === state.itemsToCount) progressToAbstract();
+                    }
+                } else if (type === 'sub') {
+                    if (!this.classList.contains('smashed') && state.domItemsSmashed < state.domItemsToSmash) {
+                        if(value === 10 && (state.blocksToSmash - state.smashedCount) < 10) {
+                            playSound('error');
+                            this.classList.add('shake');
+                            setTimeout(() => this.classList.remove('shake'), 400);
+                            return; 
+                        }
+
+                        playSound('smash');
+                        createParticles(e.clientX, e.clientY, colorClass);
+
+                        this.classList.add('smashed');
+                        state.smashedCount += value;
+                        state.domItemsSmashed++;
+                        
+                        let remaining = state.blocksToSmash - state.smashedCount;
+                        if (state.playMode === 'practice') {
+                            document.getElementById('sub-instruction').innerText = `${remaining} value left to smash!`;
+                        }
+                        
+                        if (state.smashedCount === state.blocksToSmash) progressToAbstract();
+                    }
+                }
+            });
+            return block;
+        }
+
+        function progressToAbstract() {
+            const instText = document.getElementById('instruction-text');
+            const subInstText = document.getElementById('sub-instruction');
+            if (state.mode === 'add') {
+                instText.innerText = "Great counting!";
+                if (state.playMode === 'practice') subInstText.innerText = "Now pick the correct number below.";
+            } else {
+                instText.innerText = "Awesome smashing!";
+                if (state.playMode === 'practice') subInstText.innerText = "Count what's left and pick the answer!";
+            }
+            elAnswer.classList.add('pop');
+        }
+
+        function generateAnswerOptions() {
+            elOptions.innerHTML = '';
+            let options = new Set([state.correctAnswer]);
+            
+            while(options.size < 3) {
+                let offset = Math.floor(Math.random() * 3) + 1;
+                // Make wrong answers slightly trickier for big numbers
+                if(state.level === 3) offset = (Math.floor(Math.random() * 3) + 1) * 10;
+                
+                let wrong = Math.random() > 0.5 ? state.correctAnswer + offset : state.correctAnswer - offset;
+                if (wrong >= 0) options.add(wrong);
+            }
+            
+            let shuffled = Array.from(options).sort(() => Math.random() - 0.5);
+            
+            shuffled.forEach(num => {
+                const btn = document.createElement('button');
+                btn.className = "bg-white border-b-4 border-gray-300 text-gray-700 hover:bg-gray-50 text-4xl font-black py-6 rounded-2xl shadow-sm active:border-b-0 active:translate-y-1 transition-all";
+                btn.innerText = num;
+                btn.onclick = () => checkAnswer(num, btn);
+                elOptions.appendChild(btn);
+            });
+        }
+
+        function checkAnswer(selectedNumber, buttonElement) {
+            if (state.phase !== 'answer') return; 
+
+            const instText = document.getElementById('instruction-text');
+            const subInstText = document.getElementById('sub-instruction');
+
+            if (selectedNumber === state.correctAnswer) {
+                // Record correct stat
+                if (state.mode === 'add') stats.addCorrect++;
+                else stats.subCorrect++;
+                
+                playSound('win');
+                elAnswer.innerText = state.correctAnswer;
+                elAnswer.className = "text-green-500 border-none pb-0";
+                
+                buttonElement.classList.replace('bg-white', 'bg-green-400');
+                buttonElement.classList.replace('text-gray-700', 'text-white');
+                buttonElement.classList.replace('border-gray-300', 'border-green-600');
+                
+                // Add coin bump animation
+                elCoins.classList.remove('coin-bump');
+                void elCoins.offsetWidth; // trigger reflow
+                elCoins.classList.add('coin-bump');
+                
+                if (state.playMode === 'practice') {
+                    state.streak++;
+                    state.struggleCount = 0; 
+                    stats.coins += state.level * 5;
+                    
+                    elStreak.innerText = state.streak;
+                    elCoins.innerText = stats.coins;
+                    saveLocalStats();
+                    
+                    if (state.autoLevel && state.streak >= 5 && state.level < 3) {
+                        state.level++;
+                        state.streak = 0; 
+                        elStreak.innerText = state.streak;
+                        updateLevelButtons();
+                        
+                        instText.innerText = "🌟 LEVEL UP! 🌟";
+                        instText.classList.add('text-purple-600');
+                        subInstText.innerText = "You're on fire! Let's try harder numbers.";
+                        setTimeout(() => instText.classList.remove('text-purple-600'), 2000);
+                    } else {
+                        instText.innerText = "You got it! 🎉";
+                        subInstText.innerText = "Brilliant job!";
+                    }
+                    
+                    fireConfetti();
+                    state.phase = 'wait'; 
+                    setTimeout(() => generateProblem(), 2000);
+                } else {
+                    state.sprintCount++;
+                    stats.coins += 2; // Small reward for sprint answers
+                    elCoins.innerText = stats.coins;
+                    saveLocalStats();
+                    
+                    if (state.sprintCount >= state.maxSprint) {
+                        clearInterval(state.timerInterval);
+                        state.phase = 'wait'; 
+                        let finalTime = (Date.now() - state.startTime) / 1000;
+                        
+                        document.getElementById('sprint-final-time').innerText = finalTime.toFixed(1) + "s";
+                        
+                        if (!stats.bestTimes[state.level] || finalTime < stats.bestTimes[state.level]) {
+                            stats.bestTimes[state.level] = finalTime;
+                            document.getElementById('sprint-best-message').innerText = "🏆 New Best Time!";
+                            saveLocalStats();
+                            updateBestTimeUI();
+                        } else {
+                            document.getElementById('sprint-best-message').innerText = "";
+                        }
+                        
+                        fireConfetti();
+                        setTimeout(() => sprintModal.classList.replace('hidden', 'flex'), 1000);
+                        
+                    } else {
+                        state.phase = 'wait'; 
+                        setTimeout(() => generateProblem(), 300);
+                    }
+                }
+
+            } else {
+                // Record incorrect stat
+                if (state.mode === 'add') stats.addIncorrect++;
+                else stats.subIncorrect++;
+                saveLocalStats();
+
+                playSound('error');
+                buttonElement.classList.add('shake', 'bg-red-100');
+                setTimeout(() => buttonElement.classList.remove('shake'), 400);
+                
+                if (state.playMode === 'practice') {
+                    state.streak = 0;
+                    state.struggleCount++;
+                    elStreak.innerText = state.streak;
+                    
+                    if (state.autoLevel && state.struggleCount >= 3 && state.level > 1) {
+                        state.level--;
+                        state.struggleCount = 0;
+                        updateLevelButtons();
+                        
+                        state.phase = 'wait'; 
+                        instText.innerText = "Let's rebuild! 🛠️";
+                        instText.classList.add('text-orange-500');
+                        subInstText.innerText = "Dropping down a level to warm up our math muscles.";
+                        
+                        setTimeout(() => {
+                            instText.classList.remove('text-orange-500');
+                            generateProblem(); 
+                        }, 2500); 
+                        
+                    } else {
+                        document.getElementById('hint-text').innerText = state.mode === 'add' 
+                            ? "Let's touch the blocks on the screen to count them together."
+                            : "Let's count the blocks that are still left standing.";
+                        hintModal.classList.replace('hidden', 'flex');
+                    }
+                } else {
+                    instText.innerText = "Oops! +3 Seconds!";
+                    instText.classList.add('text-red-500');
+                    state.startTime -= 3000; 
+                    setTimeout(() => {
+                        if(instText) instText.classList.remove('text-red-500');
+                    }, 1000);
+                }
+            }
+        }
+
+        const canvas = document.getElementById('confetti');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function fireConfetti() {
+            const colors = ['#ef4444', '#3b82f6', '#22c55e', '#eab308'];
+            for (let i = 0; i < 100; i++) {
+                particles.push({
+                    x: canvas.width / 2, y: canvas.height / 2,
+                    vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 1) * 20 - 5,
+                    size: Math.random() * 10 + 5, color: colors[Math.floor(Math.random() * colors.length)], life: 1
+                });
+            }
+            if(particles.length <= 100) animateConfetti();
+        }
+
+        function animateConfetti() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < particles.length; i++) {
+                let p = particles[i];
+                ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, p.size, p.size);
+                p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= 0.01;
+            }
+            particles = particles.filter(p => p.life > 0);
+            if (particles.length > 0) requestAnimationFrame(animateConfetti);
+            else ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) {
+                try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } 
+                catch(e) { console.warn("Web audio not supported."); }
+            }
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        }
+        document.addEventListener('touchstart', initAudio, { once: true });
+        document.addEventListener('mousedown', initAudio, { once: true });
+
+        function playSound(type) {
+            initAudio(); 
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+            
+            if (type === 'pop') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(400 + (state.itemsCounted * 50), now); 
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'smash') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(40, now + 0.2);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now); osc.stop(now + 0.2);
+            } else if (type === 'win') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(440, now); osc.frequency.setValueAtTime(554, now + 0.1); 
+                gain.gain.setValueAtTime(0.3, now); gain.gain.linearRampToValueAtTime(0, now + 0.4);
+                osc.start(now); osc.stop(now + 0.4);
+            } else if (type === 'blip') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(600, now);
+                gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now + 0.05);
+                osc.start(now); osc.stop(now + 0.05);
+            } else if (type === 'error') {
+                osc.type = 'square'; osc.frequency.setValueAtTime(200, now); osc.frequency.setValueAtTime(150, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            }
+        }
+
+        function createParticles(x, y, colorClass) {
+            let baseColor = '#22c55e'; 
+            if(stats.currentTheme === 'neon') baseColor = '#39ff14';
+            for (let i = 0; i < 8; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle'; particle.style.backgroundColor = baseColor;
+                particle.style.left = (x - 5) + 'px'; particle.style.top = (y - 5) + 'px';
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 30 + Math.random() * 50;
+                particle.style.setProperty('--tx', Math.cos(angle) * distance + 'px');
+                particle.style.setProperty('--ty', Math.sin(angle) * distance + 'px');
+                document.body.appendChild(particle);
+                setTimeout(() => particle.remove(), 500);
+            }
+        }
+
+        function buyTheme(themeName, cost) {
+            if (stats.unlockedThemes.includes(themeName)) {
+                selectTheme(themeName);
+                return;
+            }
+            if (stats.coins >= cost) {
+                stats.coins -= cost;
+                stats.unlockedThemes.push(themeName);
+                playSound('win');
+                saveLocalStats();
+                updateShopUI();
+                selectTheme(themeName);
+            } else {
+                playSound('error');
+                const btn = document.getElementById(`btn-buy-${themeName}`);
+                btn.classList.add('shake');
+                setTimeout(() => btn.classList.remove('shake'), 400);
+            }
+        }
+
+        function selectTheme(themeName) {
+            if (stats.unlockedThemes.includes(themeName)) {
+                stats.currentTheme = themeName;
+                playSound('blip');
+                saveLocalStats();
+                generateProblem(); 
+                shopModal.classList.replace('flex', 'hidden');
+            }
+        }
+
+        window.onload = () => {
+            updateShopUI();
+            setOpMode('add');
+        };
+    </script>
+</body>
+</html>
